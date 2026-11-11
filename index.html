@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 粒子手势交互系统 - 终极版</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- MediaPipe Hands（使用 CDN，需开启代理） -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <!-- 自定义样式 -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <!-- 加载遮罩 -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <p class="text-white mt-4 text-sm tracking-wider">正在初始化视觉引擎...</p>
+    </div>
+
+    <!-- 主 UI 控制面板 (简洁风格) -->
+    <div id="ui-panel"
+        class="absolute top-4 left-4 z-50 w-80 p-5 rounded-xl simple-panel text-white max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-600 pb-3">
+            <h1 class="text-xl font-bold tracking-wide text-blue-300">⚛️ 粒子系统控制台</h1>
+            <div id="status-dot" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
+                title="手势追踪状态"></div>
+        </div>
+
+        <!-- ✋ 新增：左右手识别设置 -->
+        <div class="mb-4 p-3 bg-gray-700/50 rounded-lg border border-gray-600">
+            <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2 block">识别手部设置 (左右手)</label>
+            <div class="flex justify-between items-center space-x-2">
+                <!-- 左手开关 -->
+                <div class="flex items-center">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleLeftHand" class="sr-only peer" checked>
+                        <div
+                            class="w-9 h-5 bg-gray-500 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600">
+                        </div>
+                        <span class="ml-2 text-sm text-gray-200">左手</span>
+                    </label>
+                </div>
+                <!-- 右手开关 -->
+                <div class="flex items-center">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggleRightHand" class="sr-only peer" checked>
+                        <div
+                            class="w-9 h-5 bg-gray-500 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600">
+                        </div>
+                        <span class="ml-2 text-sm text-gray-200">右手</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 手势形状控制开关 -->
+        <div class="mb-4 p-3 bg-gray-700/50 rounded-lg border border-gray-600">
+            <div class="flex items-center justify-between">
+                <label class="text-sm font-semibold flex items-center">
+                    <span class="mr-2 text-xl">🖐️</span> 手势切换形状 (1, 2, 3)
+                </label>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="gestureMorphToggle" class="sr-only peer" checked>
+                    <div
+                        class="w-11 h-6 bg-gray-500 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600">
+                    </div>
+                </label>
+            </div>
+            <p id="gesture-hint" class="text-xs text-gray-300 mt-2 italic">开启时：识别 1/2/3 切换模型，同时禁用交互。未识别时允许交互。</p>
+            <p id="current-gesture-display" class="text-sm font-bold mt-2 text-yellow-300">当前手势/模型: Saturn</p>
+        </div>
+
+        <!-- 手势交互提示 -->
+        <div class="mb-5 p-3 bg-blue-900/50 rounded-lg border border-blue-700">
+            <h3 class="text-sm font-bold text-blue-300 mb-1">交互模式 (无论开关):</h3>
+            <ul class="text-xs list-disc ml-4 space-y-1 text-gray-200">
+                <li>**水平移动手掌**: 控制粒子系统**左右旋转**。</li>
+                <li>**张开/合拢手掌**: 控制粒子系统**缩放/扩散**。</li>
+            </ul>
+        </div>
+
+
+        <!-- 基础模型选择 -->
+        <div class="mb-5">
+            <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2 block">基础模型选择
+                (点击设置回归目标)</label>
+            <div class="grid grid-cols-5 gap-2">
+                <button data-shape="sphere"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">🔮 球体</button>
+                <button data-shape="heart"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">❤️ 爱心</button>
+                <button data-shape="saturn"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">🪐 土星</button>
+                <button data-shape="flower"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">🌸 花朵</button>
+                <button data-shape="torus"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">🍩 甜甜圈</button>
+            </div>
+            <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold my-2 block">手势数字模型
+                (仅为演示/参考)</label>
+            <div class="grid grid-cols-5 gap-2">
+                <button data-shape="one"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">1️⃣</button>
+                <button data-shape="two"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">2️⃣</button>
+                <button data-shape="three"
+                    class="model-button p-2 text-xs bg-gray-700 hover:bg-gray-600 rounded transition">3️⃣</button>
+            </div>
+        </div>
+
+        <!-- 粒子外观控制 -->
+        <div class="mb-5 border-t border-gray-700 pt-4">
+            <div class="mb-3">
+                <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2 block">粒子颜色</label>
+                <div class="flex items-center space-x-3 bg-gray-700 p-2 rounded">
+                    <input type="color" id="colorPicker" value="#9600CC"
+                        class="w-8 h-8 rounded cursor-pointer bg-transparent border-0">
+                    <span class="text-sm font-mono" id="colorHex">#9600CC</span>
+                </div>
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2 block">粒子大小</label>
+                <div class="flex items-center space-x-3 bg-gray-700 p-2 rounded">
+                    <input type="range" id="sizeSlider" min="0.01" max="0.50" step="0.01" value="0.24" class="w-full">
+                    <span class="text-sm font-mono w-10 text-right" id="sizeValue">0.24</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🤖 LLM 描述生成器 -->
+        <div class="mb-5 border-t border-gray-700 pt-4">
+            <h2 class="text-md font-bold mb-3 text-blue-300">🤖 粒子描述生成器 (LLM)</h2>
+            <textarea id="llm-prompt"
+                class="w-full h-20 p-2 text-sm rounded bg-gray-700 text-white border border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="例如：描述它的几何美感..."></textarea>
+            <button id="generate-description-btn"
+                class="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-semibold transition shadow-md disabled:opacity-50"
+                aria-label="生成描述">
+                生成当前形状的描述
+            </button>
+            <div id="llm-response"
+                class="mt-3 p-3 text-sm rounded bg-gray-700 text-gray-200 min-h-[50px] whitespace-pre-wrap">
+                <!-- LLM 响应将显示在这里 -->
+            </div>
+            <div id="llm-loading" class="mt-2 text-center hidden">
+                <div class="spinner mx-auto"></div>
+                <p class="text-xs text-blue-300 mt-2">AI 正在思考中...</p>
+            </div>
+        </div>
+
+        <div class="text-xs text-gray-400 leading-relaxed mb-4 border-t border-gray-700 pt-4">
+            <p>⌨️ <span class="text-white font-semibold">快捷键：</span></p>
+            <ul class="list-disc pl-4 mt-1 space-y-1">
+                <li><span class="text-yellow-400 font-bold">X</span> : 显示/隐藏 控制面板</li>
+                <li><span class="text-yellow-400 font-bold">I</span> : 显示/隐藏 摄像头预览</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 摄像头输入与预览 -->
+    <video id="input_video"></video>
+    <div id="camera_preview" class="simple-panel" title="拖动可移动，右下角可缩放">
+        <canvas id="preview_canvas"></canvas>
+    </div>
+
+    <!-- WebGL 画布容器 -->
+    <div id="canvas-container" class="w-full h-screen"></div>
+
+    <!-- 自定义脚本 -->
+    <script src="script.js"></script>
+</body>
+
+</html>
